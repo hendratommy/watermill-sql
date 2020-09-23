@@ -1,8 +1,10 @@
 package sql_test
 
 import (
+	"context"
 	stdSQL "database/sql"
 	"fmt"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"os"
 	"testing"
 	"time"
@@ -158,5 +160,83 @@ func TestPostgreSQLPublishSubscribe(t *testing.T) {
 		features,
 		createPostgreSQLPubSub,
 		createPostgreSQLPubSubWithConsumerGroup,
+	)
+}
+
+func newPgxPostgreSQL(t *testing.T) *pgxpool.Pool {
+	addr := os.Getenv("WATERMILL_TEST_POSTGRES_HOST")
+	if addr == "" {
+		addr = "localhost"
+	}
+
+	connStr := fmt.Sprintf("postgres://watermill:password@%s/watermill?sslmode=disable", addr)
+	db, err := pgxpool.Connect(context.Background(), connStr)
+	require.NoError(t, err)
+
+	return db
+}
+
+func newPgxPubSub(t *testing.T, db *pgxpool.Pool, consumerGroup string, schemaAdapter sql.SchemaAdapter, offsetsAdapter sql.OffsetsAdapter) (message.Publisher, message.Subscriber) {
+	publisher, err := sql.NewPgxPublisher(
+		db,
+		sql.PublisherConfig{
+			SchemaAdapter: schemaAdapter,
+		},
+		logger,
+	)
+	require.NoError(t, err)
+
+	subscriber, err := sql.NewPgxSubscriber(
+		db,
+		sql.SubscriberConfig{
+			ConsumerGroup: consumerGroup,
+
+			PollInterval:   100 * time.Millisecond,
+			ResendInterval: 50 * time.Millisecond,
+			SchemaAdapter:  schemaAdapter,
+			OffsetsAdapter: offsetsAdapter,
+		},
+		logger,
+	)
+	require.NoError(t, err)
+
+	return publisher, subscriber
+}
+
+func createPgxPostgreSQLPubSubWithConsumerGroup(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+	schemaAdapter := &testPostgreSQLSchema{
+		sql.DefaultPostgreSQLSchema{
+			GenerateMessagesTableName: func(topic string) string {
+				return fmt.Sprintf(`"test_%s"`, topic)
+			},
+		},
+	}
+
+	offsetsAdapter := sql.DefaultPostgreSQLOffsetsAdapter{
+		GenerateMessagesOffsetsTableName: func(topic string) string {
+			return fmt.Sprintf(`"test_offsets_%s"`, topic)
+		},
+	}
+
+	return newPubSub(t, newPostgreSQL(t), consumerGroup, schemaAdapter, offsetsAdapter)
+}
+
+func createPgxPostgreSQLPubSub(t *testing.T) (message.Publisher, message.Subscriber) {
+	return createPostgreSQLPubSubWithConsumerGroup(t, "test")
+}
+
+func TestPgxPostgreSQLPublishSubscribe(t *testing.T) {
+	features := tests.Features{
+		ConsumerGroups:      true,
+		ExactlyOnceDelivery: true,
+		GuaranteedOrder:     true,
+		Persistent:          true,
+	}
+
+	tests.TestPubSub(
+		t,
+		features,
+		createPgxPostgreSQLPubSub,
+		createPgxPostgreSQLPubSubWithConsumerGroup,
 	)
 }

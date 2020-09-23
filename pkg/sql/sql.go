@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/jackc/pgtype/pgxtype"
+	"github.com/jackc/pgx/v4"
 )
 
 // interface definitions borrowed from github.com/volatiletech/sqlboiler
@@ -46,4 +49,14 @@ func (s sqlArgsToLog) String() string {
 func isDeadlock(err error) bool {
 	// ugly, but should be universal for multiple sql implementations
 	return strings.Contains(strings.ToLower(err.Error()), "deadlock")
+}
+
+// Row interface represent sql.Row and pgx.Row
+type Row interface {
+	Scan(dest ...interface{}) error
+}
+
+type pgxBeginner interface {
+	pgxtype.Querier
+	BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error)
 }

@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -68,7 +67,7 @@ func (s DefaultPostgreSQLSchema) SelectQuery(topic string, consumerGroup string,
 	return selectQuery, nextOffsetArgs
 }
 
-func (s DefaultPostgreSQLSchema) UnmarshalMessage(row *sql.Row) (offset int, msg *message.Message, err error) {
+func (s DefaultPostgreSQLSchema) UnmarshalMessage(row Row) (offset int, msg *message.Message, err error) {
 	return unmarshalDefaultMessage(row)
 }
 
